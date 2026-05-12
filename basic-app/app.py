@@ -10,6 +10,7 @@ suburbs = pd.DataFrame({
     "median_income": [75000, 95000, 68000, 82000, 71000, 105000, 58000, 52000],
 })
 
+# Part One: UI
 app_ui = ui.page_fluid(
     ui.h2("Auckland suburbs explorer"),
     ui.p("Filter suburbs by minimum population and see how incomes compare."),
@@ -19,6 +20,7 @@ app_ui = ui.page_fluid(
     ui.output_plot("chart"),
 )
 
+# Part Two: Server
 def server(input, output, session):
 
     @reactive.calc
@@ -46,4 +48,5 @@ def server(input, output, session):
         plt.tight_layout()
         return fig
 
+# Part Three: Combine them
 app = App(app_ui, server)

@@ -1,0 +1,105 @@
+---
+title: "GISCI 343 Assignment 2: Design Report"
+author: "Jessica Courtney (JCOU608)"
+date: today
+format:
+  pdf:
+    documentclass: article
+    geometry: margin=2.5cm
+    fontsize: 11pt
+    number-sections: true
+    toc: false
+---
+
+# Motivation and Audience
+
+As a student commuting to Auckland University, I wanted to understand which bus routes serve the campus and how busy they are. The practical motivation was personal — I drive part of the way and then catch a bus, so I needed to know which routes pass through the university area, where they come from, and which are most used. The assignment requirement to use patronage data added a second layer: not just which routes exist, but how many people use them.
+
+The dashboard is aimed at students and commuters planning trips to the Auckland University campus, as well as anyone interested in how public transport demand is distributed across the route network. It enables a user to quickly identify the busiest routes serving campus, see where those routes run spatially, and explore how patronage varies by time period and geographic region.
+
+# Data and Preparation
+
+Three datasets were used:
+
+**AT Patronage CSV (2024).** Downloaded from the Auckland Transport website [@at_patronage]. The file contains daily boarding counts for each route across 2024. It is structured in wide format with one row per route and one column per date. The data was reshaped to long format using `pandas.melt()`, date strings were parsed with `dayfirst=True` to handle the New Zealand DD/MM/YYYY format, and commas were stripped from patronage values before numeric conversion. The dataset includes a Region column (Central, East, North, South, West, Waiheke) which was used to colour-code routes. Only Central, East and Northern regions had buses that intersected with one of the stops I chose.
+
+**Bus Routes GeoPackage.** Downloaded from the AT GIS Open Data portal (Bus Service, layer 2) [@at_routes]. The file contains 566 rows representing individual route pattern segments in NZTM 2193 (EPSG:2193). Routes were filtered to those intersecting a 50 m buffer around the university bus stops using `geopandas.overlay()`, then dissolved by route number to produce one geometry per route using `dissolve()`. Dissolved geometries were converted from `GeometryCollection` to `MultiLineString` where necessary before reprojection to WGS84 (EPSG:4326) for ipyleaflet.
+
+**Bus Stops GeoPackage.** Downloaded from the AT GIS Open Data portal (Bus Service, layer 3) [@at_stops]. Used solely to identify the university stop locations: Stop B, C, D, E Auckland Universities, University of Auckland, and AUT City Campus. The centroid of these stops was used as the map marker.
+
+**Limitations.** The route geometries include both inbound and outbound directions as separate segments, but the patronage data is aggregated at the route level with no directional split. This made it impossible to distinguish whether a route passed the university on the inbound or outbound leg. The stops file also contains no field linking stops to route numbers, so spatial buffering was the only method available to determine which routes served each stop. The required version of shinywidgets (0.3.3) was identified through trial and error after a bug in version 0.8.1 caused the ipyleaflet map to render blank when multiple GeoJSON layers were added.
+
+All spatial data was reprojected from EPSG:2193 to EPSG:4326 for ipyleaflet compatibility. The preprocessing script (`preprocess.py`) handles all filtering, dissolving, and reprojection and is run once before the app starts.
+
+# Technical Architecture
+
+## App Structure
+
+The application is split into two files. `preprocess.py` is run once to generate processed GeoPackage files in `data/processed/`. `app.py` loads these files at startup and defines the Shiny UI and server.
+
+## Reactive Dependency Logic
+
+The app uses two shared `@reactive.calc` functions. `cur_pat()` filters the patronage data by date range and active regions, and is read by the chart, table, and stat boxes. `cur_table()` groups that filtered data by route to calculate average daily patronage, and feeds the same three outputs. The selected route is stored as a `reactive.Value` updated when a table row is clicked or the clear button is pressed.
+
+## Performance Considerations
+
+Route geometries are dissolved to one row per route number in `preprocess.py`, reducing the map layer count from 59 rows to 16. Both processed GeoPackage files are loaded once at module level so no file I/O occurs during user interaction. The patronage data (68,808 rows) is filtered reactively on each input change but is small enough that this is fast.
+
+# User Interface Walkthrough
+
+::: {layout-ncol=2}
+![Full dashboard on load showing all routes across three regions](screenshots/fig1.png)
+
+![Route 70 selected, highlighted in yellow on the map](screenshots/fig2.png)
+
+![Only East region selected, showing three eastern routes](screenshots/fig3.png)
+
+![Bar chart showing all regions with the date picker open](screenshots/fig4.png)
+:::
+
+The dashboard opens showing all 16 routes across three regions on a dark CartoDB basemap (Figure 1). Central routes are shown in blue, East in green, and North in pink. The route summary table on the right lists all routes sorted by average daily patronage. Clicking a row highlights that route on the map in yellow (Figure 2) — here Route 70 (Botany to Britomart via Panmure) is selected, showing its full corridor from east to city centre. The region checkboxes filter to specific regions (Figure 3), isolating the three eastern routes. Scrolling down reveals the date pickers and bar chart (Figure 4), colour-coded by region. Route 70 and NX2 are the busiest routes with 9,994 and 7,245 average daily boardings respectively.
+
+# Limitations and Future Improvements
+
+The main limitation is the patronage data itself — it is aggregated at the route level with no directional or stop-level breakdown. This meant it was not possible to determine whether a route's boardings were concentrated at the university stops or spread across the full corridor. A stop-level dataset would enable a much more precise question: not just which routes pass the university, but how many people actually board and alight there.
+
+The dashboard is also limited to 2024 data, so no temporal comparison with earlier years is possible. I could have added other years to compare the March Madness times but was mainly focused on where the routes were.
+
+The shinywidgets version constraint (0.3.3) is a significant technical limitation. The map cannot be deployed via shinylive in its current form because shinylive does not support ipyleaflet. With more time, the map could be reimplemented using Folium or Plotly, both of which are compatible with shinylive and would enable full browser-based deployment without a server.
+
+Finally, the spatial buffer approach for identifying university routes (50 m around stop locations) is imprecise. A GTFS feed linking stops to route IDs would provide an exact match and would also enable filtering by direction, time of day, and service frequency.
+
+# References
+
+::: {#refs}
+:::
+
+---
+references:
+- id: at_patronage
+  type: webpage
+  title: "How many people are taking buses, trains and ferries"
+  author:
+    - literal: Auckland Transport
+  URL: "https://at.govt.nz/about-us/reports-publications/how-many-people-are-taking-buses-trains-and-ferries"
+  accessed:
+    date-parts: [[2026, 5, 17]]
+
+- id: at_routes
+  type: webpage
+  title: "BusService — Bus Routes (Layer 2)"
+  author:
+    - literal: AT GIS Open Data
+  URL: "https://data-atgis.opendata.arcgis.com/datasets/ATgis::busservice/about?layer=2"
+  accessed:
+    date-parts: [[2026, 5, 17]]
+
+- id: at_stops
+  type: webpage
+  title: "BusService — Bus Stops (Layer 0)"
+  author:
+    - literal: AT GIS Open Data
+  URL: "https://data-atgis.opendata.arcgis.com/datasets/ATgis::busservice/explore?layer=0"
+  accessed:
+    date-parts: [[2026, 5, 17]]
+---
